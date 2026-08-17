@@ -1127,6 +1127,28 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         });
     }
 
+    // 从搜索结果快速加入收藏（用 POI 名称作为收藏名，不弹命名框）
+    private void saveFavoriteFromSearch(String name, String bd09Lng, String bd09Lat) {
+        try {
+            double lng = Double.parseDouble(bd09Lng);
+            double lat = Double.parseDouble(bd09Lat);
+            double[] wgs = MapUtils.bd2wgs(lng, lat);
+
+            ContentValues contentValues = new ContentValues();
+            contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LOCATION, name);
+            contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LONGITUDE_WGS84, String.valueOf(wgs[0]));
+            contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LATITUDE_WGS84, String.valueOf(wgs[1]));
+            contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
+            contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LONGITUDE_CUSTOM, Double.toString(lng));
+            contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LATITUDE_CUSTOM, Double.toString(lat));
+
+            DataBaseFavoriteLocation.saveFavoriteLocation(mFavoriteLocationDB, contentValues);
+            GoUtils.DisplayToast(this, getResources().getString(R.string.app_location_save));
+        } catch (NumberFormatException e) {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_input));
+        }
+    }
+
     // 收藏当前位置并命名保存到收藏列表（与自动历史记录分离）
     private void saveFavoriteWithName() {
         if (mMarkLatLngMap == null) {
@@ -1181,7 +1203,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 Map<String, Object> item = new HashMap<>();
                 item.put(HistoryActivity.KEY_ID, cursor.getString(0));
                 item.put(HistoryActivity.KEY_LOCATION, cursor.getString(1));
-                item.put(HistoryActivity.KEY_LNG_LAT_CUSTOM, cursor.getString(5) + "," + cursor.getString(6));
+                String lng = cursor.getString(5);
+                String lat = cursor.getString(6);
+                item.put(HistoryActivity.KEY_LNG_LAT_CUSTOM, lng + "," + lat);
+                item.put("display_lnglat", "经度:" + lng + "  纬度:" + lat);
                 data.add(item);
             }
             cursor.close();
@@ -1192,7 +1217,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         return data;
     }
 
-    // 弹出收藏列表，点击收藏项直接在地图上标记并居中；可新增/删除收藏
+    // 弹出收藏列表，点击收藏项直接启动模拟定位；可新增/删除收藏
     private void showFavoriteDialog() {
         List<Map<String, Object>> favorites = getFavoriteList();
 
@@ -1202,18 +1227,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             return;
         }
 
-        String[] items = new String[favorites.size()];
-        for (int i = 0; i < favorites.size(); i++) {
-            Map<String, Object> item = favorites.get(i);
-            String name = (String) item.get(HistoryActivity.KEY_LOCATION);
-            String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
-            String[] parts = lngLat.split(",");
-            items[i] = name + "\n经度:" + parts[0] + " 纬度:" + parts[1];
-        }
+        SimpleAdapter adapter = new SimpleAdapter(this, favorites, R.layout.favorite_item,
+                new String[]{HistoryActivity.KEY_LOCATION, "display_lnglat"},
+                new int[]{R.id.fav_name, R.id.fav_lnglat});
 
         new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.main_favorite_title))
-                .setItems(items, (dialog, which) -> {
+                .setAdapter(adapter, (dialog, which) -> {
                     Map<String, Object> item = favorites.get(which);
                     String name = (String) item.get(HistoryActivity.KEY_LOCATION);
                     String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
@@ -1235,18 +1255,13 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             return;
         }
 
-        String[] items = new String[favorites.size()];
-        for (int i = 0; i < favorites.size(); i++) {
-            Map<String, Object> item = favorites.get(i);
-            String name = (String) item.get(HistoryActivity.KEY_LOCATION);
-            String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
-            String[] parts = lngLat.split(",");
-            items[i] = name + "\n经度:" + parts[0] + " 纬度:" + parts[1];
-        }
+        SimpleAdapter adapter = new SimpleAdapter(this, favorites, R.layout.favorite_item,
+                new String[]{HistoryActivity.KEY_LOCATION, "display_lnglat"},
+                new int[]{R.id.fav_name, R.id.fav_lnglat});
 
         new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.main_favorite_delete))
-                .setItems(items, (dialog, which) -> {
+                .setAdapter(adapter, (dialog, which) -> {
                     Map<String, Object> item = favorites.get(which);
                     String locId = (String) item.get(HistoryActivity.KEY_ID);
                     DataBaseFavoriteLocation.deleteFavoriteLocation(mFavoriteLocationDB, Integer.parseInt(locId));
@@ -1440,8 +1455,26 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         MainActivity.this,
                         data,
                         R.layout.search_poi_item,
-                        new String[] {POI_NAME, POI_ADDRESS, POI_LONGITUDE, POI_LATITUDE}, // 与下面数组元素要一一对应
-                        new int[] {R.id.poi_name, R.id.poi_address, R.id.poi_longitude, R.id.poi_latitude});
+                        new String[] {POI_NAME, POI_ADDRESS, POI_LONGITUDE, POI_LATITUDE, "favorite"},
+                        new int[] {R.id.poi_name, R.id.poi_address, R.id.poi_longitude, R.id.poi_latitude, R.id.btn_poi_favorite});
+                // 搜索结果项右侧的收藏按钮点击
+                final List<Map<String, Object>> finalData = data;
+                simAdapt.setViewBinder((view, dataValue, textRepresentation) -> {
+                    if (view.getId() == R.id.btn_poi_favorite) {
+                        view.setOnClickListener(v -> {
+                            int pos = mSearchList.getPositionForView(v);
+                            if (pos >= 0 && pos < finalData.size()) {
+                                Map<String, Object> item = finalData.get(pos);
+                                String name = (String) item.get(POI_NAME);
+                                String lng = (String) item.get(POI_LONGITUDE);
+                                String lat = (String) item.get(POI_LATITUDE);
+                                saveFavoriteFromSearch(name, lng, lat);
+                            }
+                        });
+                        return true;
+                    }
+                    return false;
+                });
                 mSearchList.setAdapter(simAdapt);
                 // mSearchList.setVisibility(View.VISIBLE);
                 mSearchLayout.setVisibility(View.VISIBLE);
@@ -1464,6 +1497,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             poiItem.put(POI_ADDRESS, suggestionResult.getAllSuggestions().get(i).city + " " + suggestionResult.getAllSuggestions().get(i).district);
             poiItem.put(POI_LONGITUDE, "" + suggestionResult.getAllSuggestions().get(i).pt.longitude);
             poiItem.put(POI_LATITUDE, "" + suggestionResult.getAllSuggestions().get(i).pt.latitude);
+            poiItem.put("favorite", "");
             data.add(poiItem);
         }
         return data;
