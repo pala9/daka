@@ -892,19 +892,14 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mMarkLatLngMap = bd09Point;
         mMarkName = name;
 
+        // 选择新地址后重新开启模拟定位（而非在旧模拟上跳转），确保位置完全切换
         if (isMockServStart) {
-            // 已在模拟，直接跳转到新位置
-            double[] latLng = MapUtils.bd2wgs(bd09Point.longitude, bd09Point.latitude);
-            double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
-            mServiceBinder.setPosition(latLng[0], latLng[1], alt);
-            Snackbar.make(mButtonStart, "已传送到新位置", Snackbar.LENGTH_LONG)
-                    .setAction("Action", null).show();
-        } else {
-            startGoLocation();
-            mButtonStart.setImageResource(R.drawable.ic_fly);
-            Snackbar.make(mButtonStart, "模拟位置已启动", Snackbar.LENGTH_LONG)
-                    .setAction("Action", null).show();
+            stopGoLocation();
         }
+        startGoLocation();
+        mButtonStart.setImageResource(R.drawable.ic_fly);
+        Snackbar.make(mButtonStart, "模拟位置已启动", Snackbar.LENGTH_LONG)
+                .setAction("Action", null).show();
 
         recordCurrentLocation(bd09Point.longitude, bd09Point.latitude);
 
@@ -1284,7 +1279,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         return data;
     }
 
-    // 弹出历史定位列表，点击后在地图上标记并居中
+    // 弹出历史定位列表，点击后直接启动模拟定位（含随机偏移）
     private void showHistoryDialog() {
         List<Map<String, Object>> history = getLocationHistory();
 
@@ -1309,9 +1304,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     String name = (String) item.get(HistoryActivity.KEY_LOCATION);
                     String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
                     String[] parts = lngLat.split(",");
-                    if (!showLocation(name, parts[0], parts[1])) {
-                        GoUtils.DisplayToast(this, getResources().getString(R.string.history_error_location));
-                    }
+                    startMockAt(new LatLng(Double.parseDouble(parts[1]), Double.parseDouble(parts[0])), name);
                 })
                 .show();
     }
