@@ -145,6 +145,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private double mCurrentLat = 0.0;       // 当前位置的百度纬度
     private double mCurrentLon = 0.0;       // 当前位置的百度经度
     private float mCurrentDirection = 0.0f;
+    private double mMockLat = 0.0;          // 当前模拟定位的百度纬度
+    private double mMockLng = 0.0;          // 当前模拟定位的百度经度
     private boolean isFirstLoc = true; // 是否首次定位
     private boolean isMockServStart = false;
     private ServiceGo.ServiceGoBinder mServiceBinder;
@@ -579,6 +581,17 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         return;
                     }
 
+                    // 模拟定位期间：蓝点强制显示模拟位置，避免被百度定位 SDK 返回的真实/缓存位置拉回
+                    if (isMockServStart && mMockLat != 0.0 && mMockLng != 0.0) {
+                        MyLocationData mockLocData = new MyLocationData.Builder()
+                                .latitude(mMockLat)
+                                .longitude(mMockLng)
+                                .direction(mCurrentDirection)
+                                .build();
+                        mBaiduMap.setMyLocationData(mockLocData);
+                        return;
+                    }
+
                     // 只在定位结果有效时更新坐标（模拟定位结果也属于有效坐标）。
                     // 定位失败时百度 SDK 会返回无效坐标(如 4.9E-324)，
                     // 若不判断会污染当前位置，导致"返回当前位置"跳到无效位置
@@ -773,8 +786,16 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     }
 
     private void resetMap() {
+        // 模拟期间返回模拟位置；否则使用真实定位
+        double lat = mCurrentLat;
+        double lon = mCurrentLon;
+        if (isMockServStart && mMockLat != 0.0 && mMockLng != 0.0) {
+            lat = mMockLat;
+            lon = mMockLng;
+        }
+
         // 定位尚未成功时（坐标为默认 0），直接提示，避免地图跳到无效位置
-        if (mCurrentLat == 0.0 && mCurrentLon == 0.0) {
+        if (lat == 0.0 && lon == 0.0) {
             GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_location_fail));
             return;
         }
@@ -783,14 +804,14 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mMarkLatLngMap = null;
 
         MyLocationData locData = new MyLocationData.Builder()
-                .latitude(mCurrentLat)
-                .longitude(mCurrentLon)
+                .latitude(lat)
+                .longitude(lon)
                 .direction(mCurrentDirection)
                 .build();
         mBaiduMap.setMyLocationData(locData);
 
         MapStatus.Builder builder = new MapStatus.Builder();
-        builder.target(new LatLng(mCurrentLat, mCurrentLon)).zoom(18.0f);
+        builder.target(new LatLng(lat, lon)).zoom(18.0f);
         mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
     }
 
@@ -830,7 +851,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
         serviceGoIntent.putExtra(ALT_MSG_ID, alt);
 
-        // 保存本次模拟位置（BD09），下次打开 App 时优先显示
+        // 保存本次模拟位置（BD09），下次打开 App 时优先显示；同时用于模拟期间蓝点显示
+        mMockLat = mMarkLatLngMap.latitude;
+        mMockLng = mMarkLatLngMap.longitude;
         sharedPreferences.edit()
                 .putString("last_mock_lat", String.valueOf(mMarkLatLngMap.latitude))
                 .putString("last_mock_lng", String.valueOf(mMarkLatLngMap.longitude))
@@ -861,6 +884,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         // 应用随机偏移（避免模拟位置长期不变）
         bd09Point = applyRandomOffset(bd09Point, true);
+
+        // 记录当前模拟位置，模拟期间蓝点强制显示该位置
+        mMockLat = bd09Point.latitude;
+        mMockLng = bd09Point.longitude;
 
         mMarkLatLngMap = bd09Point;
         mMarkName = name;
@@ -943,6 +970,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         .setAction("Action", null).show();
                 mButtonStart.setImageResource(R.drawable.ic_position);
             } else {
+                // 记录新模拟位置，模拟期间蓝点强制显示该位置
+                mMockLat = mMarkLatLngMap.latitude;
+                mMockLng = mMarkLatLngMap.longitude;
                 double[] latLng = MapUtils.bd2wgs(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
                 double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
                 mServiceBinder.setPosition(latLng[0], latLng[1], alt);
