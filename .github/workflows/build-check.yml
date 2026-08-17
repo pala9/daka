@@ -39,12 +39,12 @@ jobs:
           java-version: '17'
           distribution: 'adopt'
           cache: gradle
-      # 创建 local.properties 文件
+      # 创建 local.properties 文件（未配置 Secrets 时使用占位值，仅保证编译通过）
       - name: Create local.properties
         run: |
           cat << EOF > local.properties
-          MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}
-          MAPS_SAFE_CODE=${{ secrets.MAPS_SAFE_CODE }}
+          MAPS_API_KEY=${{ secrets.MAPS_API_KEY != '' && secrets.MAPS_API_KEY || 'gogogo-build-check' }}
+          MAPS_SAFE_CODE=${{ secrets.MAPS_SAFE_CODE != '' && secrets.MAPS_SAFE_CODE || 'gogogo-build-check' }}
           EOF
       # 给 gradlew 增加执行权限
       - name: Grant execute permission for gradlew
