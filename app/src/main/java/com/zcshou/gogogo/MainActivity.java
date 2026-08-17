@@ -90,6 +90,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import com.zcshou.service.ServiceGo;
@@ -610,7 +611,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         String lastLat = sharedPreferences.getString("last_mock_lat", "");
                         String lastLng = sharedPreferences.getString("last_mock_lng", "");
                         if (!lastLat.isEmpty() && !lastLng.isEmpty()) {
-                            mMarkLatLngMap = new LatLng(Double.parseDouble(lastLat), Double.parseDouble(lastLng));
+                            // 应用随机偏移，避免每次打开显示的位置都完全一致
+                            mMarkLatLngMap = applyRandomOffset(new LatLng(Double.parseDouble(lastLat), Double.parseDouble(lastLng)), false);
                         } else {
                             // 这里记录百度地图返回的位置
                             mMarkLatLngMap = new LatLng(bdLocation.getLatitude(), bdLocation.getLongitude());
@@ -857,6 +859,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             return;
         }
 
+        // 应用随机偏移（避免模拟位置长期不变）
+        bd09Point = applyRandomOffset(bd09Point, true);
+
         mMarkLatLngMap = bd09Point;
         mMarkName = name;
 
@@ -881,6 +886,35 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         if (GoUtils.isWifiEnabled(MainActivity.this)) {
             GoUtils.showDisableWifiDialog(MainActivity.this);
+        }
+    }
+
+    // 对 BD09 坐标应用随机偏移（与历史记录选点逻辑一致，避免模拟位置长期不变）
+    private LatLng applyRandomOffset(LatLng bd09Point, boolean showToast) {
+        if (!sharedPreferences.getBoolean("setting_random_offset", false)) {
+            return bd09Point;
+        }
+
+        try {
+            double lonMaxOffset = Double.parseDouble(sharedPreferences.getString("setting_lon_max_offset", getResources().getString(R.string.setting_random_offset_default)));
+            double latMaxOffset = Double.parseDouble(sharedPreferences.getString("setting_lat_max_offset", getResources().getString(R.string.setting_random_offset_default)));
+            double lon = bd09Point.longitude;
+            double lat = bd09Point.latitude;
+
+            double randomLonOffset = (Math.random() * 2 - 1) * lonMaxOffset;  // 经度偏移(米)
+            double randomLatOffset = (Math.random() * 2 - 1) * latMaxOffset;  // 纬度偏移(米)
+
+            lon += randomLonOffset / 111320;    // 米 -> 经度
+            lat += randomLatOffset / 110574;    // 米 -> 纬度
+
+            if (showToast) {
+                String offsetMessage = String.format(Locale.US, "经度偏移: %.2f米\n纬度偏移: %.2f米", randomLonOffset, randomLatOffset);
+                GoUtils.DisplayToast(this, offsetMessage);
+            }
+
+            return new LatLng(lat, lon);
+        } catch (NumberFormatException e) {
+            return bd09Point;
         }
     }
 
