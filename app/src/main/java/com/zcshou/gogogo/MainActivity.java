@@ -575,6 +575,18 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         return;
                     }
 
+                    // 只在定位成功时更新坐标。定位失败时百度 SDK 会返回无效坐标(如 4.9E-324)，
+                    // 若不判断会污染当前位置，导致"返回当前位置"跳到无效位置
+                    int locType = bdLocation.getLocType();
+                    boolean locOk = locType == 61   // GPS定位成功
+                            || locType == 65        // 定位缓存结果
+                            || locType == 66        // 离线定位结果
+                            || locType == 161;      // 网络定位成功
+                    if (!locOk) {
+                        mLocClient.requestLocation();   /* 请求位置 */
+                        return;
+                    }
+
                     mCurrentCity = bdLocation.getCity();
                     mCurrentLat = bdLocation.getLatitude();
                     mCurrentLon = bdLocation.getLongitude();
@@ -587,21 +599,15 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     MyLocationConfiguration configuration = new MyLocationConfiguration(MyLocationConfiguration.LocationMode.NORMAL, true, null);
                     mBaiduMap.setMyLocationConfiguration(configuration);
 
-                    /* 如果出现错误，则需要重新请求位置 */
-                    int err = bdLocation.getLocType();
-                    if (err == BDLocation.TypeCriteriaException || err == BDLocation.TypeNetWorkException) {
-                        mLocClient.requestLocation();   /* 请求位置 */
-                    } else {
-                        if (isFirstLoc) {
-                            isFirstLoc = false;
-                            // 这里记录百度地图返回的位置
-                            mMarkLatLngMap = new LatLng(bdLocation.getLatitude(), bdLocation.getLongitude());
-                            MapStatus.Builder builder = new MapStatus.Builder();
-                            builder.target(mMarkLatLngMap).zoom(18.0f);
-                            mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
+                    if (isFirstLoc) {
+                        isFirstLoc = false;
+                        // 这里记录百度地图返回的位置
+                        mMarkLatLngMap = new LatLng(bdLocation.getLatitude(), bdLocation.getLongitude());
+                        MapStatus.Builder builder = new MapStatus.Builder();
+                        builder.target(mMarkLatLngMap).zoom(18.0f);
+                        mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
 
-                            XLog.i("First Baidu LatLng: " + mMarkLatLngMap);
-                        }
+                        XLog.i("First Baidu LatLng: " + mMarkLatLngMap);
                     }
                 }
                 /**
@@ -753,6 +759,12 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     }
 
     private void resetMap() {
+        // 定位尚未成功时（坐标为默认 0），直接提示，避免地图跳到无效位置
+        if (mCurrentLat == 0.0 && mCurrentLon == 0.0) {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_location_fail));
+            return;
+        }
+
         mBaiduMap.clear();
         mMarkLatLngMap = null;
 

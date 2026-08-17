@@ -46,6 +46,7 @@
     <string name="app_location_ok">位置已传送</string>
     <string name="app_location_copy">位置已复制到剪切板</string>
     <string name="app_location_save">位置已保存</string>
+    <string name="app_error_location_fail">定位尚未成功，请稍后再试</string>
 
     <!-- 欢迎页 -->
     <string name="welcome_btn_txt">进入应用</string>
