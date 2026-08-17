@@ -93,6 +93,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.zcshou.service.ServiceGo;
+import com.zcshou.database.DataBaseFavoriteLocation;
 import com.zcshou.database.DataBaseHistoryLocation;
 import com.zcshou.database.DataBaseHistorySearch;
 import com.zcshou.utils.ShareUtils;
@@ -150,6 +151,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
     private FloatingActionButton mButtonStart;
     /*============================== 历史记录 相关 ==============================*/
     private SQLiteDatabase mLocationHistoryDB;
+    private SQLiteDatabase mFavoriteLocationDB;
     private SQLiteDatabase mSearchHistoryDB;
     /*============================== SearchView 相关 ==============================*/
     private SearchView searchView;
@@ -264,6 +266,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
         //close db
         mLocationHistoryDB.close();
+        mFavoriteLocationDB.close();
         mSearchHistoryDB.close();
 
         super.onDestroy();
@@ -745,7 +748,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         });
 
         ImageButton savePosBtn = this.findViewById(R.id.save_pos);
-        savePosBtn.setOnClickListener(v -> saveCurrentLocationWithName());
+        savePosBtn.setOnClickListener(v -> showFavoriteDialog());
 
         ImageButton historyPosBtn = this.findViewById(R.id.history_pos);
         historyPosBtn.setOnClickListener(v -> showHistoryDialog());
@@ -896,6 +899,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
             // 定位历史
             DataBaseHistoryLocation dbLocation = new DataBaseHistoryLocation(getApplicationContext());
             mLocationHistoryDB = dbLocation.getWritableDatabase();
+            // 收藏位置
+            DataBaseFavoriteLocation dbFavorite = new DataBaseFavoriteLocation(getApplicationContext());
+            mFavoriteLocationDB = dbFavorite.getWritableDatabase();
             // 搜索历史
             DataBaseHistorySearch dbHistory = new DataBaseHistorySearch(getApplicationContext());
             mSearchHistoryDB = dbHistory.getWritableDatabase();
@@ -1005,8 +1011,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         });
     }
 
-    // 收藏当前位置并命名保存到历史记录
-    private void saveCurrentLocationWithName() {
+    // 收藏当前位置并命名保存到收藏列表（与自动历史记录分离）
+    private void saveFavoriteWithName() {
         if (mMarkLatLngMap == null) {
             GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_location));
             return;
@@ -1032,15 +1038,105 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     double[] latLng = MapUtils.bd2wgs(lng, lat);
 
                     ContentValues contentValues = new ContentValues();
-                    contentValues.put(DataBaseHistoryLocation.DB_COLUMN_LOCATION, name);
-                    contentValues.put(DataBaseHistoryLocation.DB_COLUMN_LONGITUDE_WGS84, String.valueOf(latLng[0]));
-                    contentValues.put(DataBaseHistoryLocation.DB_COLUMN_LATITUDE_WGS84, String.valueOf(latLng[1]));
-                    contentValues.put(DataBaseHistoryLocation.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
-                    contentValues.put(DataBaseHistoryLocation.DB_COLUMN_LONGITUDE_CUSTOM, Double.toString(lng));
-                    contentValues.put(DataBaseHistoryLocation.DB_COLUMN_LATITUDE_CUSTOM, Double.toString(lat));
+                    contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LOCATION, name);
+                    contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LONGITUDE_WGS84, String.valueOf(latLng[0]));
+                    contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LATITUDE_WGS84, String.valueOf(latLng[1]));
+                    contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_TIMESTAMP, System.currentTimeMillis() / 1000);
+                    contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LONGITUDE_CUSTOM, Double.toString(lng));
+                    contentValues.put(DataBaseFavoriteLocation.DB_COLUMN_LATITUDE_CUSTOM, Double.toString(lat));
 
-                    DataBaseHistoryLocation.saveHistoryLocation(mLocationHistoryDB, contentValues);
+                    DataBaseFavoriteLocation.saveFavoriteLocation(mFavoriteLocationDB, contentValues);
                     GoUtils.DisplayToast(this, getResources().getString(R.string.app_location_save));
+                })
+                .setNegativeButton(getString(R.string.main_cancel), null)
+                .show();
+    }
+
+    // 获取收藏列表（名称 + BD09 坐标）
+    private List<Map<String, Object>> getFavoriteList() {
+        List<Map<String, Object>> data = new ArrayList<>();
+
+        try {
+            Cursor cursor = mFavoriteLocationDB.query(DataBaseFavoriteLocation.TABLE_NAME, null,
+                    DataBaseFavoriteLocation.DB_COLUMN_ID + " > ?", new String[] {"0"},
+                    null, null, DataBaseFavoriteLocation.DB_COLUMN_TIMESTAMP + " DESC", null);
+
+            while (cursor.moveToNext()) {
+                Map<String, Object> item = new HashMap<>();
+                item.put(HistoryActivity.KEY_ID, cursor.getString(0));
+                item.put(HistoryActivity.KEY_LOCATION, cursor.getString(1));
+                item.put(HistoryActivity.KEY_LNG_LAT_CUSTOM, cursor.getString(5) + "," + cursor.getString(6));
+                data.add(item);
+            }
+            cursor.close();
+        } catch (Exception e) {
+            XLog.e("ERROR: getFavoriteList");
+        }
+
+        return data;
+    }
+
+    // 弹出收藏列表，点击收藏项直接在地图上标记并居中；可新增/删除收藏
+    private void showFavoriteDialog() {
+        List<Map<String, Object>> favorites = getFavoriteList();
+
+        if (favorites.isEmpty()) {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.main_favorite_empty));
+            saveFavoriteWithName();
+            return;
+        }
+
+        String[] items = new String[favorites.size()];
+        for (int i = 0; i < favorites.size(); i++) {
+            Map<String, Object> item = favorites.get(i);
+            String name = (String) item.get(HistoryActivity.KEY_LOCATION);
+            String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
+            String[] parts = lngLat.split(",");
+            items[i] = name + "\n经度:" + parts[0] + " 纬度:" + parts[1];
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.main_favorite_title))
+                .setItems(items, (dialog, which) -> {
+                    Map<String, Object> item = favorites.get(which);
+                    String name = (String) item.get(HistoryActivity.KEY_LOCATION);
+                    String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
+                    String[] parts = lngLat.split(",");
+                    if (!showLocation(name, parts[0], parts[1])) {
+                        GoUtils.DisplayToast(this, getResources().getString(R.string.history_error_location));
+                    }
+                })
+                .setPositiveButton(getString(R.string.main_favorite_add), (dialog, which) -> saveFavoriteWithName())
+                .setNeutralButton(getString(R.string.main_favorite_delete), (dialog, which) -> showDeleteFavoriteDialog())
+                .setNegativeButton(getString(R.string.main_cancel), null)
+                .show();
+    }
+
+    // 删除收藏：弹出收藏列表，点击项即删除
+    private void showDeleteFavoriteDialog() {
+        List<Map<String, Object>> favorites = getFavoriteList();
+
+        if (favorites.isEmpty()) {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.main_favorite_empty));
+            return;
+        }
+
+        String[] items = new String[favorites.size()];
+        for (int i = 0; i < favorites.size(); i++) {
+            Map<String, Object> item = favorites.get(i);
+            String name = (String) item.get(HistoryActivity.KEY_LOCATION);
+            String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
+            String[] parts = lngLat.split(",");
+            items[i] = name + "\n经度:" + parts[0] + " 纬度:" + parts[1];
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.main_favorite_delete))
+                .setItems(items, (dialog, which) -> {
+                    Map<String, Object> item = favorites.get(which);
+                    String locId = (String) item.get(HistoryActivity.KEY_ID);
+                    DataBaseFavoriteLocation.deleteFavoriteLocation(mFavoriteLocationDB, Integer.parseInt(locId));
+                    GoUtils.DisplayToast(this, getResources().getString(R.string.main_favorite_deleted));
                 })
                 .setNegativeButton(getString(R.string.main_cancel), null)
                 .show();

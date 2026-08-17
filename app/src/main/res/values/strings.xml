@@ -112,6 +112,11 @@
     <string name="main_save_confirm">保存</string>
     <string name="main_cancel">取消</string>
     <string name="main_history">历史位置</string>
+    <string name="main_favorite_title">我的收藏</string>
+    <string name="main_favorite_add">新增收藏</string>
+    <string name="main_favorite_delete">删除收藏</string>
+    <string name="main_favorite_deleted">已删除该收藏</string>
+    <string name="main_favorite_empty">暂无收藏，请先在地图上选择位置</string>
 
     <!-- 百度地图 -->
     <string name="map_pic_sate">卫星图</string>
