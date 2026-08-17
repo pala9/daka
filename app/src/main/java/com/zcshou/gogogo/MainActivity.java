@@ -684,8 +684,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         //可选，默认false，设置是否需要POI结果，可以在BDLocation.getPoiList里得到
         locationOption.setIsNeedLocationPoiList(false);
         //可选，默认false，设置是否收集CRASH信息，默认收集
-        // 当前 libs/BaiduLBS_Android.jar 中的 LocationClientOption 无此方法，导致编译失败，暂时注释
-        // locationOption.setIgnoreCacheException(true);
+        // 注意：百度 SDK 方法名首字母大写（SetIgnoreCacheException），不是标准 Java 命名
+        locationOption.SetIgnoreCacheException(true);
         //可选，默认false，设置是否开启Gps定位
         //locationOption.setOpenGps(true);
         locationOption.setOpenGnss(true);
