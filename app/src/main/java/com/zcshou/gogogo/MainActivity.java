@@ -606,8 +606,15 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
                     if (isFirstLoc) {
                         isFirstLoc = false;
-                        // 这里记录百度地图返回的位置
-                        mMarkLatLngMap = new LatLng(bdLocation.getLatitude(), bdLocation.getLongitude());
+                        // 优先显示上次模拟定位的位置，没有则显示真实定位
+                        String lastLat = sharedPreferences.getString("last_mock_lat", "");
+                        String lastLng = sharedPreferences.getString("last_mock_lng", "");
+                        if (!lastLat.isEmpty() && !lastLng.isEmpty()) {
+                            mMarkLatLngMap = new LatLng(Double.parseDouble(lastLat), Double.parseDouble(lastLng));
+                        } else {
+                            // 这里记录百度地图返回的位置
+                            mMarkLatLngMap = new LatLng(bdLocation.getLatitude(), bdLocation.getLongitude());
+                        }
                         MapStatus.Builder builder = new MapStatus.Builder();
                         builder.target(mMarkLatLngMap).zoom(18.0f);
                         mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newMapStatus(builder.build()));
@@ -821,10 +828,60 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
         serviceGoIntent.putExtra(ALT_MSG_ID, alt);
 
+        // 保存本次模拟位置（BD09），下次打开 App 时优先显示
+        sharedPreferences.edit()
+                .putString("last_mock_lat", String.valueOf(mMarkLatLngMap.latitude))
+                .putString("last_mock_lng", String.valueOf(mMarkLatLngMap.longitude))
+                .apply();
+
         startForegroundService(serviceGoIntent);
         XLog.d("startForegroundService: ServiceGo");
 
         isMockServStart = true;
+    }
+
+    // 直接从收藏/历史选点开始模拟定位
+    private void startMockAt(LatLng bd09Point, String name) {
+        if (!GoUtils.isNetworkAvailable(this)) {
+            GoUtils.DisplayToast(this, getResources().getString(R.string.app_error_network));
+            return;
+        }
+
+        if (!GoUtils.isGpsOpened(this)) {
+            GoUtils.showEnableGpsDialog(this);
+            return;
+        }
+
+        if (!GoUtils.isAllowMockLocation(this)) {
+            GoUtils.showEnableMockLocationDialog(this);
+            return;
+        }
+
+        mMarkLatLngMap = bd09Point;
+        mMarkName = name;
+
+        if (isMockServStart) {
+            // 已在模拟，直接跳转到新位置
+            double[] latLng = MapUtils.bd2wgs(bd09Point.longitude, bd09Point.latitude);
+            double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
+            mServiceBinder.setPosition(latLng[0], latLng[1], alt);
+            Snackbar.make(mButtonStart, "已传送到新位置", Snackbar.LENGTH_LONG)
+                    .setAction("Action", null).show();
+        } else {
+            startGoLocation();
+            mButtonStart.setImageResource(R.drawable.ic_fly);
+            Snackbar.make(mButtonStart, "模拟位置已启动", Snackbar.LENGTH_LONG)
+                    .setAction("Action", null).show();
+        }
+
+        recordCurrentLocation(bd09Point.longitude, bd09Point.latitude);
+
+        mBaiduMap.clear();
+        mMarkLatLngMap = null;
+
+        if (GoUtils.isWifiEnabled(MainActivity.this)) {
+            GoUtils.showDisableWifiDialog(MainActivity.this);
+        }
     }
 
     private void stopGoLocation() {
@@ -1102,9 +1159,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                     String name = (String) item.get(HistoryActivity.KEY_LOCATION);
                     String lngLat = (String) item.get(HistoryActivity.KEY_LNG_LAT_CUSTOM);
                     String[] parts = lngLat.split(",");
-                    if (!showLocation(name, parts[0], parts[1])) {
-                        GoUtils.DisplayToast(this, getResources().getString(R.string.history_error_location));
-                    }
+                    startMockAt(new LatLng(Double.parseDouble(parts[1]), Double.parseDouble(parts[0])), name);
                 })
                 .setPositiveButton(getString(R.string.main_favorite_add), (dialog, which) -> saveFavoriteWithName())
                 .setNeutralButton(getString(R.string.main_favorite_delete), (dialog, which) -> showDeleteFavoriteDialog())
