@@ -575,13 +575,15 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                         return;
                     }
 
-                    // 只在定位成功时更新坐标。定位失败时百度 SDK 会返回无效坐标(如 4.9E-324)，
+                    // 只在定位结果有效时更新坐标（模拟定位结果也属于有效坐标）。
+                    // 定位失败时百度 SDK 会返回无效坐标(如 4.9E-324)，
                     // 若不判断会污染当前位置，导致"返回当前位置"跳到无效位置
                     int locType = bdLocation.getLocType();
                     boolean locOk = locType == 61   // GPS定位成功
                             || locType == 65        // 定位缓存结果
                             || locType == 66        // 离线定位结果
-                            || locType == 161;      // 网络定位成功
+                            || locType == 161       // 网络定位成功
+                            || locType == 168;      // 模拟定位结果
                     if (!locOk) {
                         mLocClient.requestLocation();   /* 请求位置 */
                         return;
