@@ -207,7 +207,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
             @Override
             public void onServiceDisconnected(ComponentName name) {
-
+                mServiceBinder = null;
             }
         };
 
@@ -946,6 +946,7 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
         stopService(serviceGoIntent);
         isMockServStart = false;
+        mServiceBinder = null; // 清空 binder，下次 startGoLocation 才会重新 bindService
     }
 
     private void doGoLocation(View v) {
@@ -971,7 +972,9 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
                 mMockLng = mMarkLatLngMap.longitude;
                 double[] latLng = MapUtils.bd2wgs(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
                 double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
-                mServiceBinder.setPosition(latLng[0], latLng[1], alt);
+                if (mServiceBinder != null) {
+                    mServiceBinder.setPosition(latLng[0], latLng[1], alt);
+                }
                 Snackbar.make(v, "已传送到新位置", Snackbar.LENGTH_LONG)
                         .setAction("Action", null).show();
 
