@@ -263,6 +263,19 @@ public class ServiceGo extends Service {
             mCurAlt = alt;
             mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
         }
+
+        // 重新注册 test provider 并更新位置（切换模拟位置时调用，确保 provider 有效）
+        public void resetAndSetPosition(double lng, double lat, double alt) {
+            removeTestProviderNetwork();
+            addTestProviderNetwork();
+            removeTestProviderGPS();
+            addTestProviderGPS();
+            mLocHandler.removeMessages(HANDLER_MSG_ID);
+            mCurLng = lng;
+            mCurLat = lat;
+            mCurAlt = alt;
+            mLocHandler.sendEmptyMessage(HANDLER_MSG_ID);
+        }
     }
 }
 

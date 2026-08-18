@@ -895,9 +895,22 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mMarkLatLngMap = bd09Point;
         mMarkName = name;
 
-        // 切换模拟位置：不停止服务，直接重新下发位置（服务已在运行时会触发 onStartCommand 更新坐标，
-        // 避免 stop/start 异步竞争导致 provider 被移除或 addTestProvider 异常而偶发失败）
-        startGoLocation();
+        // 保存本次模拟位置（BD09），下次打开 App 时优先显示
+        sharedPreferences.edit()
+                .putString("last_mock_lat", String.valueOf(bd09Point.latitude))
+                .putString("last_mock_lng", String.valueOf(bd09Point.longitude))
+                .apply();
+
+        double[] latLng = MapUtils.bd2wgs(bd09Point.longitude, bd09Point.latitude);
+        double alt = Double.parseDouble(sharedPreferences.getString("setting_altitude", "55.0"));
+
+        if (isMockServStart && mServiceBinder != null) {
+            // 已在模拟中：重新注册 test provider 并更新位置（避免 provider 失效导致注入失败）
+            mServiceBinder.resetAndSetPosition(latLng[0], latLng[1], alt);
+        } else {
+            // 不在模拟中：正常启动模拟服务
+            startGoLocation();
+        }
         mButtonStart.setImageResource(R.drawable.ic_fly);
         Snackbar.make(mButtonStart, "模拟位置已启动", Snackbar.LENGTH_LONG)
                 .setAction("Action", null).show();
