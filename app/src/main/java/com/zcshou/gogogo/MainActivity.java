@@ -844,7 +844,10 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
 
     private void startGoLocation() {
         Intent serviceGoIntent = new Intent(MainActivity.this, ServiceGo.class);
-        bindService(serviceGoIntent, mConnection, BIND_AUTO_CREATE);    // 绑定服务和活动，之后活动就可以去调服务的方法了
+        // 服务已绑定时不再重复 bind，避免引用计数累积；服务未运行时才绑定
+        if (mServiceBinder == null) {
+            bindService(serviceGoIntent, mConnection, BIND_AUTO_CREATE);
+        }
         double[] latLng = MapUtils.bd2wgs(mMarkLatLngMap.longitude, mMarkLatLngMap.latitude);
         serviceGoIntent.putExtra(LNG_MSG_ID, latLng[0]);
         serviceGoIntent.putExtra(LAT_MSG_ID, latLng[1]);
@@ -892,10 +895,8 @@ public class MainActivity extends BaseActivity implements SensorEventListener {
         mMarkLatLngMap = bd09Point;
         mMarkName = name;
 
-        // 选择新地址后重新开启模拟定位（而非在旧模拟上跳转），确保位置完全切换
-        if (isMockServStart) {
-            stopGoLocation();
-        }
+        // 切换模拟位置：不停止服务，直接重新下发位置（服务已在运行时会触发 onStartCommand 更新坐标，
+        // 避免 stop/start 异步竞争导致 provider 被移除或 addTestProvider 异常而偶发失败）
         startGoLocation();
         mButtonStart.setImageResource(R.drawable.ic_fly);
         Snackbar.make(mButtonStart, "模拟位置已启动", Snackbar.LENGTH_LONG)
