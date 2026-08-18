@@ -1,4 +1,4 @@
-﻿package com.zcshou.gogogo;
+package com.zcshou.gogogo;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
